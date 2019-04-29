@@ -18,3 +18,9 @@ affect the Life Expectancy of the country in question.
 The second goal was to perform an extended exploratory
 analysis of our data-set to be able to visualize the change
 in parameters as well as Life Expectancy across the years.
+
+
+
+# Our dataset is contained in the worlbank_v2.xlsx
+
+We have two seperate code sets for our modelling and exploratory analysis. 
