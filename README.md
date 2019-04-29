@@ -1,4 +1,4 @@
-# Life-Expectancy-Analysis-and-Prediction.-
+# Life-Expectancy-Analysis-and-Prediction
 In our work, we aim to design a machine learning
 model that helps analyze alternative scenarios to determine
 whether a country is more likely to have a worse/better Life
