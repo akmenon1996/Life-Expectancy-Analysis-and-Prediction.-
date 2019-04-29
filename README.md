@@ -21,6 +21,8 @@ in parameters as well as Life Expectancy across the years.
 
 
 
-# Our dataset is contained in the worlbank_v2.xlsx
+## Our dataset is contained in the worlbank_v2.xlsx
 
 We have two seperate code sets for our modelling and exploratory analysis. 
+
+## Our project report is added as well as a PDF.
