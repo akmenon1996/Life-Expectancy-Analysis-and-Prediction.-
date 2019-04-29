@@ -1,0 +1,851 @@
+---
+title: "DMP_Project"
+authors: "Abhijit Krishna Menon, Eda Aydin Oktay"
+date: "3/26/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(dplyr)
+library(plyr)
+library(readxl)
+library(plotly)
+library(tidyverse)
+library(sf)
+library(sp)
+library(maps)
+library(mapview)
+library(countrycode)
+library(tmap)
+library(raster)
+library(spData)
+library(shiny)
+library(ggthemes)
+library(ggrepel)
+#library(tweenr)
+library(gganimate)
+```
+
+
+```{r Read_Data}
+df <- read_excel("worldbank_v2.xlsx")
+```
+
+```{r Data_Cleaning(Initial)}
+df1 <- df 
+df1$count <- apply(df1,1,function(x) length(which(x==".." | x==0)))
+df2 <- subset(df1, df1$count == 59) 
+df2 <- arrange(df2, df2$`Country Name`)
+df3 <- subset(df1, !(df1$count >= 40))
+write.csv(df3,"Cleaned_set1.csv")
+```
+
+```{r Data_segmentation}
+df4 <- unique(df3$`Series Name`)
+
+write.csv(df4,"names.csv")
+
+health<-c("Life expectancy at birth, total (years)",
+          "Children (0-14) living with HIV",				
+          "Death rate, crude (per 1,000 people)",				
+          "Fertility rate, total (births per woman)",				
+          "Immunization, DPT (% of children ages 12-23 months)",				
+          "Immunization, HepB3 (% of one-year-old children)",				
+          "Immunization, measles (% of children ages 12-23 months)",				
+          "Incidence of HIV (% of uninfected population ages 15-49)",			
+          "Newborns protected against tetanus (%)",				
+          "Number of infant deaths",				
+          "Number of maternal deaths",				
+          "Number of neonatal deaths",
+          "Current health expenditure (% of GDP)",
+          "Mortality rate, infant (per 1,000 live births)")
+
+health_data <- filter(df3,`Series Name` %in% health)
+health_data
+
+
+economy <- c( 'Life expectancy at birth, total (years)',
+              'Adjusted net national income (current US$)',
+              'Adjusted savings: education expenditure (current US$)',
+              'Adjusted savings: energy depletion (% of GNI)',
+              'Adjusted savings: net forest depletion (current US$)',
+              'Adjusted savings: net national savings (current US$)',
+              'Depth of the food deficit (kilocalories per person per day)',
+              'GDP (current US$)',
+              'GDP per capita, PPP (current international $)',
+              'Investment in water and sanitation with private participation (current US$)')
+
+economy_data <- filter(df3,`Series Name` %in% economy)
+
+Access <- c('Access to electricity (% of population)',
+            'Access to electricity, rural (% of rural population)',
+            'Individuals using the Internet (% of population)',
+            'Mobile cellular subscriptions',
+            'School enrollment, primary (% net)',
+            'Secondary education, teachers)')
+
+access_data <- filter(df3,`Series Name` %in% Access)
+
+education <- c('Life expectancy at birth, total (years)',
+               'Adjusted savings: education expenditure (current US$)',
+               'Primary education, duration (years)',
+               'Secondary education, duration (years)',
+               'Secondary education, general pupils',
+               'Secondary education, teachers',
+               'Expenditure on primary education (% of government expenditure on education)')
+
+
+education_data <- filter(df3,`Series Name` %in% education)
+
+environment <- c('CO2 emissions (metric tons per capita)',
+                 'CO2 emissions from solid fuel consumption (% of total)',
+                 'Combustible renewables and waste (% of total energy)',
+                 'Fossil fuel energy consumption (% of total)',
+                 'Total greenhouse gas emissions (kt of CO2 equivalent)',
+                 'Total reserves (includes gold, current US$)')
+
+environment_data <- filter(df3,`Series Name` %in% environment)
+
+
+others <- c('Population, total',
+            'Sex ratio at birth (male births per female births)')
+others_data <- filter(df3,`Series Name` %in% others)
+
+
+#countries= c("India", "China","US","UK","Russia","Japan","Germany","Turkey","Indonesia", "Brazil","Kenya", "Luxembourg", "Australia","UAE","Zimbabwe")
+
+
+```
+
+
+
+```{r tidy datasets}
+
+Country_List <- c("India", "China","United States","Russian Federation",
+"Japan","Germany","Turkey","Indonesia", "Kenya", "Australia","United Arab Emirates","Zimbabwe","Combodia", "Rwanda")
+
+
+ff <- economy_data %>% filter(`Country Name` %in% Country_List) %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf <- gather(ff,  "year", "values", -"Country Name", -"Series Name")
+spreaded <- spread(newdf, "Series Name", "values")
+
+final_economy <- spreaded %>% transmute(year=gsub('.{8}$', '', year),
+           income = as.numeric(`Adjusted net national income (current US$)`), 
+           le = as.numeric(`Life expectancy at birth, total (years)`),
+           eduExp=as.numeric(`Adjusted savings: education expenditure (current US$)`),
+           enerDep=as.numeric(`Adjusted savings: energy depletion (% of GNI)`),
+           forestDep= as.numeric(`Adjusted savings: net forest depletion (current US$)`),
+           natSaving=as.numeric(`Adjusted savings: net national savings (current US$)`),
+           foodDef=as.numeric(`Depth of the food deficit (kilocalories per person per day)`),
+           gdp=as.numeric(`GDP (current US$)`),
+           gdpPercap=as.numeric(`GDP per capita, PPP (current international $)`),
+           invWater=as.numeric(`Investment in water and sanitation with private participation (current US$)`),
+           country= `Country Name`)  
+
+#%>% filter(`Country Name` %in% Country_List) 
+le_health <- health_data  %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf2 <- gather(le_health,  "year", "values", -"Country Name", -"Series Name")
+spreaded2 <- spread(newdf2, "Series Name", "values")
+
+final_health <- spreaded2 %>% 
+  transmute(year=gsub('.{8}$', '', year),
+   Child_hiv = as.numeric(`Children (0-14) living with HIV`),		
+   Death_rate= as.numeric(`Death rate, crude (per 1,000 people)`),
+   Fertility_rate= as.numeric(`Fertility rate, total (births per woman)`),
+   Imm_DPT=as.numeric(`Immunization, DPT (% of children ages 12-23 months)`),
+   Imm_HepB3=as.numeric(`Immunization, HepB3 (% of one-year-old children)`),
+   Imm_measles=as.numeric(`Immunization, measles (% of children ages 12-23 months)`),
+   Incidence_HIV=as.numeric(`Incidence of HIV (% of uninfected population ages 15-49)`),
+   Newborns_tetanus =as.numeric(`Newborns protected against tetanus (%)`),				
+   Infant_deaths=as.numeric(`Number of infant deaths`),				
+   Maternal_deaths=as.numeric(`Number of maternal deaths`),				
+   Neonatal_deaths=as.numeric(`Number of neonatal deaths`),
+   Mortality_infant=as.numeric(`Mortality rate, infant (per 1,000 live births)`),
+  # Expenditure=as.numeric(`Current health expenditure (% of GDP)`),
+   LE= as.numeric(`Life expectancy at birth, total (years)`),
+   country= `Country Name`)  
+
+
+education_clean <- education_data %>% filter(`Country Name` %in% Country_List) %>%  dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+newdf3 <- education_clean%>%gather("year", "values", -"Country Name", -"Series Name")
+spreaded3 <- spread(newdf3, "Series Name", "values")
+
+final_education <- spreaded3 %>% transmute(year=gsub('.{8}$', '', year), 
+   Adj_Savings = as.numeric(`Adjusted savings: education expenditure (current US$)`),
+   LE = as.numeric(`Life expectancy at birth, total (years)`),
+   Pri_Edu_years=as.numeric(`Primary education, duration (years)`),
+   Sec_edu_years= as.numeric(`Secondary education, duration (years)`),
+   Sec_edu_pupils =as.numeric(`Secondary education, general pupils`),
+   Sec_edu_teachers =as.numeric(`Secondary education, teachers`),
+   prim_edu_expenditure =as.numeric(`Expenditure on primary education (% of government expenditure on education)`),
+   country= `Country Name`) 
+
+
+access_data_processed <- access_data  %>% filter(`Country Name` %in% Country_List) %>% 
+                         dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf <- gather(access_data_processed,  "year", "values", -"Country Name", -"Series Name")
+spreaded4 <- spread(newdf, "Series Name", "values")
+
+final_access <- spreaded4 %>% transmute(year=gsub('.{8}$', '', year), 
+ elec_acc = as.numeric(`Access to electricity (% of population)`), 
+ elec_rural = as.numeric(`Access to electricity, rural (% of rural population)`), 
+ net_acc = as.numeric(`Individuals using the Internet (% of population)`),
+ mobile = as.numeric(`Mobile cellular subscriptions`),                      
+ school_enroll = as.numeric(`School enrollment, primary (% net)`),
+ country= `Country Name`)
+
+
+
+env_clean <- environment_data %>% filter(`Country Name` %in% Country_List) %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+newdf5 <- env_clean  %>% gather("year", "values", -"Country Name", -"Series Name")
+spreaded5 <- spread(newdf5, "Series Name", "values")
+
+final_environment <- spreaded5 %>% transmute(year=gsub('.{8}$', '', year), 
+   co2emit = as.numeric(`CO2 emissions (metric tons per capita)`),
+   co2fuel = as.numeric(`CO2 emissions from solid fuel consumption (% of total)`),
+   comwaste = as.numeric(`Combustible renewables and waste (% of total energy)`),
+   fossil = as.numeric(`Fossil fuel energy consumption (% of total)`),
+   greenhouse = as.numeric(`Total greenhouse gas emissions (kt of CO2 equivalent)`),
+   reserves = as.numeric(`Total reserves (includes gold, current US$)`),
+   country = `Country Name`) 
+
+
+
+ot_clean <- others_data %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+newdf6 <- ot_clean  %>% gather("year", "values", -"Country Name", -"Series Name")
+spreaded6 <- spread(newdf6, "Series Name", "values")
+
+final_others <- spreaded6 %>% transmute(year=gsub('.{8}$', '', year), 
+   pop_total = as.numeric(`Population, total`),
+   sexratio = as.numeric(`Sex ratio at birth (male births per female births)`),
+   country = `Country Name`) 
+
+
+
+
+
+```
+
+
+
+```{r Read_Data manya }
+
+c<-countrycode(final_health$country, 'country.name', 'iso3c') 
+
+pl <- plot_geo(final_health) %>% add_trace(z=~LE,
+                            text=~country,locations=~c,
+                            color=~LE,
+                            frame=~year)
+pl
+htmlwidgets::saveWidget(as_widget(pl), "globe.html")
+```
+
+
+```{r Read_Data manya }
+
+p <- ggplot(
+  final_health,
+  aes(year, LE, group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "Life expectancy") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p)
+
+f_e<-final_economy
+p3 <- ggplot(
+  f_e,
+  aes(year, gdp , group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "GDP") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p3)
+
+f_e<-final_access
+p4 <- ggplot(
+  f_e,
+  aes(year, elec_acc , group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "Elec_access") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p4)
+
+f_e<-final_education
+p5 <- ggplot(
+  f_e,
+  aes(year, Adj_Savings , group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "Adjusted Savings") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p5)
+
+
+
+f_e<-final_health
+p7 <- ggplot(
+  f_e,
+  aes(year, Incidence_HIV, group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "incidence hiv") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p7)
+
+f_e<-final_health
+p8 <- ggplot(
+  f_e,
+  aes(year, Fertility_rate, group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "Fertility rate") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p8)
+
+
+
+f_e<-final_environment
+p6 <- ggplot(
+  f_e,
+  aes(year, comwaste, group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "commertial waste") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p6)
+
+f_e<-final_environment
+p9 <- ggplot(
+  f_e,
+  aes(year, fossil, group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "fossil") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+```
+
+```{r Sliding bar plot }
+
+
+
+
+ # final_economy2 <- final_economy %>% 
+ #  arrange(le, country) %>% 
+ #  mutate(order2 = 1:n())
+
+plotdata <- final_economy %>%
+  group_by(year) %>%
+  mutate(ordering = rank(le)) %>%
+  ungroup() 
+
+
+p<-ggplot(plotdata,
+       aes(ordering, group = country, color=country,fill=country, show.legend = FALSE)) +
+  geom_tile(aes(y = le/2, 
+                height = le,
+                width = 0.9), alpha = 0.4) +
+  # text on top of bars
+  geom_text(aes(y = le, label = as.integer(le)), hjust = -0.2) +
+ # geom_text(aes(y = 0, label = country, hjust = 3)) +
+  # text in x-axis (requires clip = "off" in coord_cartesian)
+  geom_text(aes(y = 0, label = country, color="black"), hjust = 0, show.legend = FALSE) +
+  coord_flip(clip = "off", expand = TRUE) +
+  enter_fade() + 
+   exit_shrink() +
+  coord_flip()+
+  scale_color_viridis_d(name="", guide=FALSE)+
+  scale_fill_viridis_d(name="",guide=FALSE)+
+  ylim(0, 100) +
+ # scale_y_continuous(labels=scales::dollar)+
+#  theme_tufte(14,"Avenir")+
+  theme_classic() +
+ # guides(color=F,fill=F)+
+  labs(title = "Year: {closest_state}", y="Life Expectancy", x="Country" ) +
+  theme(plot.title = element_text(hjust = 0.5, size = 24),
+        axis.ticks.y = element_blank(),
+        axis.text.y  = element_blank()) + 
+  transition_states(states = year, transition_length = 2, state_length = 1) + 
+#  transition_time(year)+
+  ease_aes('cubic-in-out')
+
+animate(p, nframes = 130, fps = 5, end_pause = 20, width = 500, height = 500) #again, use anim_save(filename) to save
+
+
+anim_save("animation_le4.gif", animation = last_animation())
+
+
+#a <- ggplot(final_economy, aes(x = country, y = le, fill = country)) +
+#a <- ggplot(plotdata, aes(ordering , y = le, fill = country)) +
+#  geom_tile(aes(x = country, y = le, fill = country)) +
+ 
+ 
+ #  geom_bar(stat = "identity") +
+ #  labs(title = "Year: {closest_state}", y="Life Expectancy", x="Country" ) +
+ #   
+ #  geom_text(aes(label = as.integer(le), y = le),
+ #            position = position_dodge(0), vjust = 0,hjust = -0.5 ) +
+ # 
+ #  theme_classic() +
+ # # scale_x_continuous(breaks=final_economy2$order, labels=final_economy2$country) +
+ #  transition_states(states = year, transition_length = 2, state_length = 1) + 
+ #  enter_fade() + 
+ #  exit_shrink() +
+ #  coord_flip()+
+ # # ease_aes('sine-in-out') 
+ #  ease_aes('linear')
+
+
+# a_gif <- gganimate::animate(a,nframes = 120,fps =4)
+# #anim_save("animation_le.gif", animation = last_animation())
+# a_gif
+
+
+```
+
+
+
+```{r }
+# ggplot(final_economy, 
+#              mapping = aes(x = gdp, y = le, frame = year)) +
+#   geom_point() +
+#   geom_smooth(aes(group = year), method = "lm", show.legend = FALSE) +
+#   facet_wrap(~country, scales = "free") +
+#   scale_x_log10()  +
+#   facet_wrap(~country) +
+#   # Here comes the gganimate specific bits
+#   labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
+#   transition_time(as.integer(year)) +
+#   ease_aes('linear')
+#gganimate(p5)
+library(gapminder)
+
+gap <- as.data.frame(gapminder)
+gap <- distinct(gap, country, .keep_all = TRUE)
+gap <- dplyr::select(gap, country, continent)
+#misses some unmatched countries
+new_economy <- merge(gap, final_economy, by=c("country"))
+
+
+p5 <- ggplot(new_economy, 
+             mapping = aes(x = gdp, y = le, size = pop, frame = year)) +
+  geom_point() +
+  geom_smooth(aes(group = year), method = "lm", show.legend = FALSE) +
+  facet_wrap(~continent, scales = "free") +
+  scale_x_log10() 
+
+
+
+
+
+ggplot(final_economy, aes(gdp, le,  colour = country)) +
+  geom_point(alpha = 0.7, show.legend = FALSE) +
+  scale_colour_manual(values = country_colors) +
+  scale_size(range = c(2, 12)) +
+  scale_x_log10() +
+  facet_wrap(~country) +
+  # Here comes the gganimate specific bits
+  labs(title = 'Year: {frame_time}', x = 'GDP per capita', y = 'life expectancy') +
+  transition_time(as.integer(year)) +
+  ease_aes('linear')
+
+
+
+```
+
+
+```{r visualize economy shiny interface}
+
+
+
+ui <- fluidPage(
+  
+  
+  
+  # Application title
+   # titlePanel("Income Change by Time"),
+  
+  # Sidebar with a slider input for number of bins
+  dataSelection <- colnames(final_economy),
+  sidebarPanel(
+    
+    h3("Choose Parameters"),
+    
+    
+    # Input: Selector for choosing dataset ----
+      selectInput(inputId = "dataset",
+                  label = "Choose a dataset:",
+                  choices = c("Economy", "Access", "Environment", "Health", "Others")),
+    
+    
+    # Input: Selector for choosing x-axis----
+      selectizeInput(inputId = "xaxis",
+                  label = "Choose x-axis:",
+                  #choices = colnames(final_economy),
+                  choices = dataSelection,
+                  selected = "income"),
+    
+    # Input: Selector for choosing y-axis----
+      selectizeInput(inputId = "yaxis",
+                  label = "Choose y-axis:",
+                  choices = dataSelection,
+                  selected = "gdp"),
+    
+   # Input: Selector for choosing min year----
+      selectizeInput(inputId = "miny",
+                  label = "Choose minimum year:",
+                  choices = unique(final_economy$year),
+                  selected = "1960"), 
+   
+   # Input: Selector for choosing max year----
+      selectizeInput(inputId = "maxy",
+                  label = "Choose maximum year:",
+                  choices =unique(final_economy$year),
+                  selected = "2018"),
+    # Select Justices name here
+      selectizeInput("name",
+                   label = "Country Name(s) of Interest",
+                   choices = unique(final_economy$country),
+                   multiple = T,
+                   options = list(maxItems = 15,
+                                  placeholder = 'Select a name'),
+                   selected = "China" ),
+
+  #  uiOutput(outputId="xaxis"),
+  #  uiOutput(outputId="yaxis"),
+    # Term plot
+ #   plotOutput("termPlot", height = 200),
+    
+    helpText("Data source:  https://www.worldbank.org/")
+  ),
+  
+  # Show a plot of the generated distribution
+  mainPanel(
+    
+       # Output: Tabset w/ plot, summary, and table ----
+      tabsetPanel(type = "tabs",
+   
+                  tabPanel("Plot", titlePanel("Life Expectancy Change by Income ", windowTitle = "Plot"), plotlyOutput("plot")),
+                  tabPanel("Line Plot", plotlyOutput("lineplot")),
+                  tabPanel("Slope Plot", titlePanel("Overall Change in Life Expectancy", windowTitle = "Slope Plot"), plotlyOutput("slopeplot")),
+                  tabPanel("Globe Plot", titlePanel("Global Life Expectancy Change", windowTitle = "Globe Plot"), plotlyOutput("globeplot")),
+               #   tabPanel("Predictions", titlePanel("Predict", windowTitle = "Slope Plot"), plotlyOutput("predict")),
+                  tabPanel("Summary",tableOutput("view"))
+                #  tabPanel("Table", tableOutput("table"))
+ 
+   #  plotlyOutput("plot"),
+  #   plotlyOutput("slopeplot")
+   
+  
+      )
+  
+   #  uiOutput("xSelection"),
+    # uiOutput("ySelection")
+  )
+)
+
+
+server <- function(input, output, session) {
+
+    # Return the requested dataset ----
+  datasetInput <- reactive({
+    switch(input$dataset,
+           "Economy" = final_economy,
+           "Access" = final_access, 
+           "Environment" = final_environment,
+           "Health" = final_health,
+           "Other" = final_others
+          )
+  })
+  
+    # Generate a summary of the data ----
+  output$view <- renderTable({
+    head(economy_data, n = 10)
+  })
+  #   # Show the first "n" observations ----
+  # output$view <- renderTable({
+  #   head(datasetInput(), n = input$obs)
+  # })
+  # 
+
+  #UPDATE X AXIS COLUMNS
+    observe({
+    dataSelection <- datasetInput() 
+  # Can use character(0) to remove all choices
+    if (is.null(dataSelection))
+      dataSelection <- character(0)
+    # Can also set the label and select items
+    updateSelectizeInput( session,"xaxis",
+      label = paste("Choose x-axis from ", dataSelection),
+      choices = colnames(dataSelection),
+      selected = "income"
+    )
+  })
+     #UPDATE Y AXIS COLUMNS
+        observe({
+    dataSelection <- datasetInput() 
+  # Can use character(0) to remove all choices
+    if (is.null(dataSelection))
+      dataSelection <- character(0)
+    # Can also set the label and select items
+    updateSelectizeInput(session, "yaxis",
+      label = paste("Choose y-axis from ", dataSelection),
+      choices = colnames(dataSelection),
+      selected = "gdp"
+    )
+  })
+  
+    #UPDATE COUNTRY NAMES
+        observe({
+    dataSelection <- datasetInput() 
+   countries <- dataSelection[,"country"]
+  # Can use character(0) to remove all choices
+   # if (is.null(dataSelection))
+    #  dataSelection <- character(0)
+    # Can also set the label and select items
+    updateSelectInput(session, "name",
+      label = "Country Name(s) of Interest",
+      choices = unique(countries),
+      selected = "China"
+    )
+  })
+  
+
+#SCATTER ANIMATION        
+ output$plot <- renderPlotly({
+      dff <-  datasetInput()  %>%
+              filter( country %in% input$name)
+    
+p<-ggplot(dff,  aes_string(x = input$xaxis, y = input$yaxis, color="country", frame = "year"))+
+  geom_point()
+  ggplotly(p)
+   })
+ 
+#LINE ANIMATION
+# output$lineplot <- renderPlotly({
+#    
+
+
+#  accumulate_by <- function(dat, var) {
+#   var <- lazyeval::f_eval(var, dat)
+#   lvls <- plotly:::getLevels(var)
+#   dats <- lapply(seq_along(lvls), function(x) {
+#     cbind(dat[var %in% lvls[seq(1, x)], ], frame = lvls[[x]])
+#   })
+#   dplyr::bind_rows(dats)
+# }
+# 
+# #df7 <- final_economy[c(60:116),]
+# df7 <- final_economy %>%
+#   accumulate_by(~year)
+# 
+# p <- ggplot(df7,aes(year, le, frame = frame)) +
+#   geom_line()
+# 
+# p <- ggplotly(p) %>%
+#   animation_opts(
+#     frame = 50, 
+#     transition = 0, 
+#     redraw = FALSE
+#   ) %>%
+#   animation_slider(
+#     currentvalue = list(
+#       prefix = "Day "
+#     )
+#   )
+#  })
+ 
+ output$predict <- renderPlotly({
+   
+  })
+  output$lineplot <- renderPlotly({
+#      fcc<-final_economy %>%dplyr::select(year,le,country)
+# 
+#      fyy<-spread(fcc, key = country, value = le)
+# 
+# 
+#     p_trig <- ggplot(fyy, aes(x = year, frame = year, cumulative = TRUE)) +
+#   geom_line(aes(y = China, color = "blue")) +
+#   geom_line(aes(y = India, color = "red")) +
+#   #scale_x_continuous(breaks = breaks * pi,
+#    #                  labels = breaks_lbls,
+#     #                 expand = c(0, 0)) +
+# #  scale_y_continuous(expand = c(0, 0.01)) +
+#  # theme_light() +
+#  # theme(panel.grid.minor = element_blank()) +
+#   labs(x = "year", y = "le", color = NULL)
+#     
+#     
+# a <- ggplot(final_economy, aes(x = country, y = le, fill = country)) +
+#   
+#   geom_bar(stat = "identity") +
+#   labs(title = "Month: {closest_state}") +
+#   geom_text(aes(label = le, y = le),
+#             position = position_dodge(0.9), vjust = -1 ) +
+#   theme_classic() +
+#   transition_states(states = year, transition_length = 2, state_length = 1) + 
+#   enter_fade() + 
+#   exit_shrink() +
+#   coord_flip()+
+#   ease_aes('sine-in-out')
+
+ f_e<-final_economy
+p3 <- ggplot(
+  f_e,
+  aes(year, gdp , group = country, color = factor(country))
+  ) +
+  geom_line() +
+  scale_color_viridis_d() +
+  labs(x = "Year", y = "GDP") +
+  theme(legend.position = "top")+
+  theme_minimal(base_size = 8)+ theme(axis.text.x = element_text(angle = 90)) 
+
+ggplotly(p3)
+
+  })
+  
+  
+ #GLOBAL LE MAP
+ output$globeplot <- renderPlotly({
+   
+   output$caption <- renderText({
+    text("Global Life Expectancy Change")
+  })
+   
+ c<-countrycode(final_health$country, 'country.name', 'iso3c')   
+plot_geo(final_health) %>% add_trace(z=~LE,
+                            text=~country,locations=~c,
+                            color=~LE,
+                            frame=~year)
+ 
+ })
+ 
+
+    
+output$slopeplot <- renderPlotly({
+fc<-final_health %>% filter(year %in% c("1960 ","2015 "))%>%dplyr::select(year,LE,country)
+
+fcs<-spread(fc, key = year, value = LE)
+fcs<-fcs %>% filter( country %in% input$name)
+
+left_label <- paste(fcs$country, round(fcs$`1960 `),sep=", ")
+#left_label <- paste(fcs$country, round(input$miny),sep=", ")
+right_label <- paste(fcs$country, round(fcs$`2015 `),sep=", ")
+
+p <- ggplot(fcs) + geom_segment(aes(x=1, xend=2, y=`1960 `, yend=`2015 `, color=country), size=.5, show.legend=F) + 
+#p <- ggplot(fcs) + geom_segment(aes(x=1, xend=2, y=input$miny, yend=input$maxy, color=country), size=.5, show.legend=F) + 
+                  geom_vline(xintercept=1, linetype="dashed", size=.1) + 
+                  geom_vline(xintercept=2, linetype="dashed", size=.1) +
+  
+                  labs(x="", y="Life Expectancy") +  # Axis labels
+                  xlim(.5, 2.5) + ylim(0,(1.1*(max(fcs$`1960 `, fcs$`2015 `)))) 
+           #       xlim(.5, 2.5) + ylim(0,(1.1*(max(input$miny, input$maxy)))) 
+
+ p <- p + geom_text(label=left_label, y=fcs$`1960 `, x=rep(1, NROW(fcs)), hjust=4, size=2)
+ p <- p + geom_text(label=right_label, y=fcs$`2015 `, x=rep(2, NROW(fcs)), hjust=-0.9, size=2,check_overlap = TRUE)
+ p <- p + geom_text(label="1960", x=0.8, y=1*(max(fcs$`1960 `, fcs$`2015 `)), hjust=1.2, size=5)  # title
+ p <- p + geom_text(label="2015", x=2.35, y=1*(max(fcs$`1960 `, fcs$`2015 `)), hjust=-0.1, size=5)  # title
+
+#
+# Minify theme
+p + theme(panel.background = element_blank(), 
+           panel.grid = element_blank(),
+           axis.ticks = element_blank(),
+           axis.text.x = element_blank(),
+           panel.border = element_blank()) + coord_cartesian(ylim = c(42,84))
+   })    
+        
+        
+        
+        
+        
+        
+        
+        
+    #  output$plot <- renderPlotly({
+    # 
+    # dff <-  datasetInput() %>% filter(country %in% input$name)
+    # 
+    # 
+    #   ggideal_point <- ggplot(dff) +
+    #     geom_line(aes(x=input$xaxis, y=input$yaxis, by=input$name, color=country)) +
+    #     labs(x = "Year") +
+    #     labs(y = "Income") +
+    #     labs(title = "Income change for Countries") +
+    #     scale_colour_hue("clarity",l=70, c=150) +
+    #     theme_few()
+    # 
+    #   # Year range
+    #   min_Year <- min(dff$year)
+    #   max_Year <- max(dff$year)
+    # 
+    #   # use gg2list() to convert from ggplot->plotly
+    #   gg <- gg2list(ggideal_point)
+
+
+
+    
+    
+  #   plot_ly(dff,
+  #   x = ~input$xaxis,
+  #   y = ~input$yaxis,
+  # #  size = ~pop,
+  #   color = ~input$name,
+  #   frame = ~year,
+  #   hoverinfo = "text",
+  #   type = 'scatter',
+  #   mode = 'markers')  %>%
+  #   layout(
+  #   xaxis = list(
+  #     type = "log"
+  #   )
+  # )
+    
+ #   p <-    ggplot(dff,  aes_string( x = input$xaxis, y = input$yaxis), frame=country) +
+  #       geom_point()
+  #  plotly(p)
+
+
+#})
+
+}
+# Create Shiny app ----
+shinyApp(ui = ui, server = server)
+
+```
+
+
+
+
+
+

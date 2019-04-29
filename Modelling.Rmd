@@ -1,0 +1,1010 @@
+---
+title: "Project_modelling"
+author: "Abhijit Krishna Menon"
+date: "3/24/2019"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(ggplot2)
+library(keras)
+library(dplyr)
+library(plyr)
+library(readxl)
+library(tidyverse)
+library(plotly)
+library(sp)
+library(sf)
+library(maps)
+library(tmap)
+library(leaflet)
+library(shiny)
+library(mapview)
+library(magick)
+library(animation)
+library(forecast)
+library(Metrics)
+library(caret)
+library(cvTools)
+library(corrplot)
+library(car)
+library(modelr)
+```
+
+
+```{r Read_Data}
+df <- read_excel("worldbank_v2.xlsx")
+```
+
+
+
+```{r Data_Cleaning(Initial)}
+df1 <- df 
+df1$count <- apply(df1,1,function(x) length(which(x==".." | x==0)))
+df3 <- subset(df1, !(df1$count >= 40))
+write.csv(df3,"Cleaned_set1.csv")
+
+
+
+```
+
+
+
+```{r Data_segmentation}
+df4 <- unique(df3$`Series Name`)
+write.csv(df4,"names.csv")
+
+health<-c("Life expectancy at birth, total (years)",
+          "Children (0-14) living with HIV",				
+          "Death rate, crude (per 1,000 people)",				
+          "Fertility rate, total (births per woman)",				
+          "Immunization, DPT (% of children ages 12-23 months)",				
+          "Immunization, HepB3 (% of one-year-old children)",				
+          "Immunization, measles (% of children ages 12-23 months)",				
+          "Incidence of HIV (% of uninfected population ages 15-49)",			
+          "Newborns protected against tetanus (%)",				
+          "Number of infant deaths",				
+          "Number of maternal deaths",				
+          "Number of neonatal deaths",
+          'Current health expenditure (% of GDP)',
+          "Mortality rate, infant (per 1,000 live births)")
+          
+
+health_data <- filter(df3,`Series Name` %in% health)
+
+
+economy <- c( 'Life expectancy at birth, total (years)',
+              'Adjusted net national income (current US$)',
+              'Adjusted savings: education expenditure (current US$)',
+              'Adjusted savings: energy depletion (% of GNI)',
+              'Adjusted savings: net forest depletion (current US$)',
+              'Adjusted savings: net national savings (current US$)',
+              'Depth of the food deficit (kilocalories per person per day)',
+              'GDP (current US$)',
+              'GDP per capita, PPP (current international $)',
+              'Investment in water and sanitation with private participation (current US$))')
+economy_data <- filter(df3,`Series Name` %in% economy)
+
+Access <- c('Life expectancy at birth, total (years)',
+            'Access to electricity (% of population)',
+            'Access to electricity, rural (% of rural population)',
+            'Individuals using the Internet (% of population)',
+            'Mobile cellular subscriptions',
+            'School enrollment, primary (% net)',
+            'Secondary education, teachers)')
+access_data <- filter(df3,`Series Name` %in% Access)
+
+education <- c('Life expectancy at birth, total (years)','Adjusted savings: education expenditure (current US$)','Primary education, duration (years)','Secondary education, duration (years)','Secondary education, general pupils','Secondary education, teachers','Expenditure on primary education (% of government expenditure on education)')
+
+education_data <- filter(df3,`Series Name` %in% education)
+
+environment <- c('Life expectancy at birth, total (years)',
+                'CO2 emissions (metric tons per capita)',
+                 'CO2 emissions from solid fuel consumption (% of total)',
+                 'Combustible renewables and waste (% of total energy)',
+                 'Fossil fuel energy consumption (% of total)',
+                 'Total greenhouse gas emissions (kt of CO2 equivalent)',
+                 'Total reserves (includes gold, current US$))')
+
+environment_data <- filter(df3,`Series Name` %in% environment)
+
+
+others <- c('Population, total',
+            'Sex ratio at birth (male births per female births))')
+others_data <- filter(df3,`Series Name` %in% others)
+y <- unique(education_data$`Series Name`)
+```
+
+```{r df_data}
+df3_clean <- df3 %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf3_clean <- df3_clean%>%gather("year", "values", -"Country Name", -"Series Name")
+
+
+newdf3_clean_spreaded <- spread(unique(newdf3_clean), "Series Name", "values")
+
+
+
+```
+
+```{r summation_data}
+summation <- c("Life expectancy at birth, total (years)",
+          "Children (0-14) living with HIV",				
+          "Death rate, crude (per 1,000 people)",				
+          "Fertility rate, total (births per woman)",				
+          "Immunization, DPT (% of children ages 12-23 months)",				
+          "Immunization, HepB3 (% of one-year-old children)",				
+          "Immunization, measles (% of children ages 12-23 months)",				
+          "Incidence of HIV (% of uninfected population ages 15-49)",			
+          "Newborns protected against tetanus (%)",				
+          "Number of infant deaths",				
+          "Number of maternal deaths",				
+          "Number of neonatal deaths",
+          'Current health expenditure (% of GDP)',
+          "Mortality rate, infant (per 1,000 live births)",
+          'Adjusted net national income (current US$)',
+              'Adjusted savings: education expenditure (current US$)',
+              'Adjusted savings: energy depletion (% of GNI)',
+              'Adjusted savings: net forest depletion (current US$)',
+              'Adjusted savings: net national savings (current US$)',
+              'Depth of the food deficit (kilocalories per person per day)',
+              'GDP (current US$)',
+              'GDP per capita, PPP (current international $)',
+              'Investment in water and sanitation with private participation (current US$))',
+          'Life expectancy at birth, total (years)',
+            'Access to electricity (% of population)',
+            'Access to electricity, rural (% of rural population)',
+            'Individuals using the Internet (% of population)',
+            'Mobile cellular subscriptions',
+            'School enrollment, primary (% net)',
+            'Secondary education, teachers)',
+          'Life expectancy at birth, total (years)',
+                'CO2 emissions (metric tons per capita)',
+                 'CO2 emissions from solid fuel consumption (% of total)',
+                 'Combustible renewables and waste (% of total energy)',
+                 'Fossil fuel energy consumption (% of total)',
+                 'Total greenhouse gas emissions (kt of CO2 equivalent)',
+                 'Total reserves (includes gold, current US$))')
+summation_data <- filter(df3,`Series Name` %in% summation)
+
+summation_clean <- summation_data %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+
+newdf <- summation_clean%>%gather("year", "values", -"Country Name", -"Series Name")
+
+spreaded <- spread(newdf, "Series Name", "values")
+
+fin_summation <- spreaded %>% transmute(year=gsub('.{8}$', '', year),
+                                        country= `Country Name`,
+                                   LE = as.numeric(`Life expectancy at birth, total (years)`),
+                                   Adj_Savings = as.numeric(`Adjusted savings: education expenditure (current US$)`),
+                                   Pri_Edu_years=as.numeric('Primary education, duration (years)'),
+                                   Sec_edu_years= as.numeric('Secondary education, duration (years)'),
+                                   Sec_edu_pupils =as.numeric('Secondary education, general pupils'),
+                                   Sec_edu_teachers =as.numeric('Secondary education, teachers'),
+                                   prim_edu_expenditure =as.numeric('Expenditure on primary education (% of government expenditure on education)'),
+                                   co2emit = as.numeric(`CO2 emissions (metric tons per capita)`),
+                                   co2fuel = as.numeric(`CO2 emissions from solid fuel consumption (% of total)`),
+                                   comwaste = as.numeric(`Combustible renewables and waste (% of total energy)`),
+                                   fossil = as.numeric(`Fossil fuel energy consumption (% of total)`),
+                                   greenhouse = as.numeric(`Total greenhouse gas emissions (kt of CO2 equivalent)`),
+                                   reserves = as.numeric('Total reserves (includes gold, current US$)'),
+                                   "Elec. access" = as.numeric(`Access to electricity (% of population)`), 
+                                   "Elec. access rural" = as.numeric(`Access to electricity, rural (% of rural population)`),
+                                   "Indv. using Net" = as.numeric(`Individuals using the Internet (% of population)`),
+                                   "Mob subs" = as.numeric(`Mobile cellular subscriptions`),
+                                   "Sch enroll" = as.numeric(`School enrollment, primary (% net)`),
+                                   Child_hiv = as.numeric('Children (0-14) living with HIV'),
+                                   Death_rate= as.numeric(`Death rate, crude (per 1,000 people)`),
+                                   Fertility_rate= as.numeric(`Fertility rate, total (births per woman)`),
+                                   Imm_DPT=as.numeric(`Immunization, DPT (% of children ages 12-23 months)`),
+                                   Imm_HepB3=as.numeric(`Immunization, HepB3 (% of one-year-old children)`),
+                                   Imm_measles=as.numeric(`Immunization, measles (% of children ages 12-23 months)`),
+                                   Incidence_HIV=as.numeric(`Incidence of HIV (% of uninfected population ages 15-49)`),
+                                   Newborns_tetanus =as.numeric(`Newborns protected against tetanus (%)`),				
+                                   Infant_deaths=as.numeric(`Number of infant deaths`),				
+                                   Maternal_deaths=as.numeric(`Number of maternal deaths`),				
+                                   Neonatal_deaths=as.numeric(`Number of neonatal deaths`),
+                                   Mortality_infant=as.numeric('Mortality rate, infant (per 1,000 live births)'),
+                                   Expenditure=as.numeric('Current health expenditure (% of GDP)'))
+
+#fin_summation <- spreaded %>% transmute(year=gsub('.{8}$', '', year))
+```
+
+
+```{r education_data}
+
+Country_List <- c("India", "China","United States","United Kingdom","Russian Federation",
+"Japan","Germany","Turkey","Indonesia", "Brazil","Kenya","Luxembourg", "Australia","United Arab Emirates","Zimbabwe")
+
+#filter(`Country Name` %in% Country_List)
+
+education_clean <- education_data %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+
+newdf <- education_clean%>%gather("year", "values", -"Country Name", -"Series Name")
+
+
+spreaded <- spread(newdf, "Series Name", "values")
+
+#fin <- spreaded %>% mutate(year=gsub('.{8}$', '', year))
+a <- colnames(spreaded)
+
+
+fin_edu <- spreaded %>% transmute(year=gsub('.{8}$', '', year), Adj_Savings = as.numeric(`Adjusted savings: education expenditure (current US$)`), LE = as.numeric(`Life expectancy at birth, total (years)`), Pri_Edu_years=as.numeric(`Primary education, duration (years)`),Sec_edu_years= as.numeric(`Secondary education, duration (years)`),Sec_edu_pupils =as.numeric(`Secondary education, general pupils`),Sec_edu_teachers =as.numeric(`Secondary education, teachers`),prim_edu_expenditure =as.numeric(`Expenditure on primary education (% of government expenditure on education)`),country= `Country Name`) 
+
+```
+
+
+```{r economy_data}
+economy_clean <- economy_data %>% filter(`Country Name` %in% Country_List) %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf <- gather(economy_clean,  "year", "values", -"Country Name", -"Series Name")
+spreaded <- spread(newdf, "Series Name", "values")
+
+final_economy <- spreaded %>% transmute(year=gsub('.{8}$', '', year),
+           income = as.numeric(`Adjusted net national income (current US$)`), 
+           LE = as.numeric(`Life expectancy at birth, total (years)`),
+           eduExp=as.numeric(`Adjusted savings: education expenditure (current US$)`),
+           enerDep=as.numeric(`Adjusted savings: energy depletion (% of GNI)`),
+           forestDep= as.numeric(`Adjusted savings: net forest depletion (current US$)`),
+           natSaving=as.numeric(`Adjusted savings: net national savings (current US$)`),
+           foodDef=as.numeric(`Depth of the food deficit (kilocalories per person per day)`),
+           gdp=as.numeric(`GDP (current US$)`),
+           gdpPercap=as.numeric(`GDP per capita, PPP (current international $)`),
+           invWater=as.numeric('Investment in water and sanitation with private participation (current US$)'),
+           country= `Country Name`) 
+```
+
+```{r environment_data}
+
+env_clean <- environment_data %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+newdf5 <- env_clean  %>% gather("year", "values", -"Country Name", -"Series Name")
+spreaded5 <- spread(newdf5, "Series Name", "values")
+
+final_environment <- spreaded5 %>% transmute(year=gsub('.{8}$', '', year), 
+   co2emit = as.numeric(`CO2 emissions (metric tons per capita)`),
+   co2fuel = as.numeric(`CO2 emissions from solid fuel consumption (% of total)`),
+   comwaste = as.numeric(`Combustible renewables and waste (% of total energy)`),
+   fossil = as.numeric(`Fossil fuel energy consumption (% of total)`),
+   greenhouse = as.numeric(`Total greenhouse gas emissions (kt of CO2 equivalent)`),
+   LE = as.numeric(`Life expectancy at birth, total (years)`),
+   reserves = as.numeric('Total reserves (includes gold, current US$)'),
+   country = `Country Name`)
+final_environment
+```
+
+```{r access_data}
+access_data_processed <- access_data  %>% filter(`Country Name` %in% Country_List) %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf <- gather(access_data_processed,  "year", "values", -"Country Name", -"Series Name")
+spreaded <- spread(newdf, "Series Name", "values")
+
+fin_access <- spreaded %>% transmute(year=gsub('.{8}$', '', year), "Elec. access" = as.numeric(`Access to electricity (% of population)`), "Elec. access rural" = as.numeric(`Access to electricity, rural (% of rural population)`), country= `Country Name`,
+"Indv. using Net" = as.numeric(`Individuals using the Internet (% of population)`),
+"LE" = as.numeric(`Life expectancy at birth, total (years)`),            
+"Mob subs" = as.numeric(`Mobile cellular subscriptions`),                      
+"Sch enroll" = as.numeric(`School enrollment, primary (% net)`))
+
+
+
+
+```
+
+```{r health_data}
+
+le_health <- health_data   %>% filter(`Country Name` %in% Country_List) %>% dplyr::select(-`Series Code`, -`Country Code`, -`count`)
+
+
+#le_health <- health_data %>% select(-`Series Code`, -`Country Code`, -`count`)
+
+newdf <- gather(le_health,  "year", "values", -"Country Name", -"Series Name")
+
+spreaded <- spread(newdf, "Series Name", "values")
+
+fin_health <- spreaded %>% 
+  transmute(year=gsub('.{8}$', '', year),
+   Child_hiv = as.numeric(`Children (0-14) living with HIV`),		
+   Death_rate= as.numeric(`Death rate, crude (per 1,000 people)`),
+   Fertility_rate= as.numeric(`Fertility rate, total (births per woman)`),
+   Imm_DPT=as.numeric(`Immunization, DPT (% of children ages 12-23 months)`),
+   Imm_HepB3=as.numeric(`Immunization, HepB3 (% of one-year-old children)`),
+   Imm_measles=as.numeric(`Immunization, measles (% of children ages 12-23 months)`),
+   Incidence_HIV=as.numeric(`Incidence of HIV (% of uninfected population ages 15-49)`),
+   Newborns_tetanus =as.numeric(`Newborns protected against tetanus (%)`),				
+   Infant_deaths=as.numeric(`Number of infant deaths`),				
+   Maternal_deaths=as.numeric(`Number of maternal deaths`),				
+   Neonatal_deaths=as.numeric(`Number of neonatal deaths`),
+   Mortality_infant=as.numeric(`Mortality rate, infant (per 1,000 live births)`),
+   Expenditure=as.numeric('Current health expenditure (% of GDP)'),
+   LE= as.numeric(`Life expectancy at birth, total (years)`),
+   country= `Country Name`) 
+
+```
+
+
+
+```{r model fin_access Access}
+fin_access_plotting <- subset(fin_access, select = c(2,3,5,6,7,8))
+
+M <- cor(fin_access_plotting, use = "complete.obs")
+corrplot(M, method = "circle")
+
+
+final_df <- subset(fin_access_plotting, select = c(1,3,4))
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        valid = 0.1,
+                                        test = 0.1))
+htrain <- as_tibble(hsplit$train)
+hvalid <- as_tibble(hsplit$valid)
+htest <- as_tibble(hsplit$test)
+
+model <- lm(LE ~ `Elec. access` + `Indv. using Net`, data = htrain)
+
+plot(model)
+step(model, direction = "both")
+
+#rmse(model, htrain)
+
+htrain <- htrain %>%add_residuals(model, "lresid") 
+
+htrain %>%
+add_residuals(model, "lresid") %>% ggplot(aes(sample=lresid)) + geom_qq()
+
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= `Elec. access`)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+
+```
+
+```{r vif model_access}
+fin_access_plotting <- subset(fin_access, select = c(2,3,5,6,7,8))
+
+M <- cor(fin_access_plotting, use = "complete.obs")
+corrplot(M, method = "circle")
+
+
+#final_df <- subset(fin_access_plotting, select = c(1,3,4))
+final_df <- fin_access_plotting
+final_df <- drop_na(final_df)
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        valid = 0.1,
+                                        test = 0.1))
+htrain <- as_tibble(hsplit$train)
+hvalid <- as_tibble(hsplit$valid)
+htest <- as_tibble(hsplit$test)
+
+vif_model1 <- vif(lm(`LE` ~ . , data = htrain))
+
+vif_model1
+
+vif_model2 <- vif(lm(`LE` ~ . - `Elec. access rural` , data = htrain))
+
+vif_model2 <- lm(`LE` ~ . - `Elec. access rural` , data = htrain)
+
+step(vif_model2, direction = "backward")
+
+plot(vif_model2)
+
+htest_plot <- htest %>%
+add_predictions(vif_model2, "lpred")%>%
+ggplot(aes(x= `Indv. using Net`)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+
+
+```
+
+
+
+
+```{r fin_education}
+fin_edu_plotting <- subset(fin_edu, select = c(2,3,5,6,7,8))
+
+M <- cor(fin_edu_plotting, use = "complete.obs")
+corrplot(M, method = "circle")
+
+
+final_df <- subset(fin_edu_plotting, select = c(1,2,6))
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        valid = 0.1,
+                                        test = 0.1))
+htrain <- as_tibble(hsplit$train)
+hvalid <- as_tibble(hsplit$valid)
+htest <- as_tibble(hsplit$test)
+
+model <- lm(LE ~ Adj_Savings + prim_edu_expenditure, data = htrain)
+
+step(model, direction = "both")
+
+#rmse(model, htrain)
+
+htrain <- htrain %>%add_residuals(model, "lresid") 
+
+htrain %>%
+add_residuals(model, "lresid") %>% ggplot(aes(sample=lresid)) + geom_qq()
+
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= `Adj_Savings`)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+
+```
+
+```{r fin_health}
+fin_health_plotting <- subset(fin_health, select = c(2:13,15))
+M <- cor(fin_health_plotting, use = "complete.obs")
+corrplot(M, method = "circle")
+
+
+final_df <- subset(fin_health_plotting, select = c(3,7,13))
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        valid = 0.1,
+                                        test = 0.1))
+htrain <- as_tibble(hsplit$train)
+hvalid <- as_tibble(hsplit$valid)
+htest <- as_tibble(hsplit$test)
+
+model <- lm(LE ~ Fertility_rate + Incidence_HIV, data = htrain)
+
+step(model, direction = "both")
+
+#rmse(model, htrain)
+
+htrain <- htrain %>%add_residuals(model, "lresid") 
+
+htrain %>%
+add_residuals(model, "lresid") %>% ggplot(aes(sample=lresid)) + geom_qq()
+
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= Fertility_rate)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+```
+```{r fin_environment}
+fin_env_plotting <- subset(final_environment, select = c(2:7))
+M <- cor(fin_env_plotting, use = "complete.obs")
+corrplot(M, method = "circle")
+
+
+final_df <- subset(fin_env_plotting, select = c(1,3,6))
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        valid = 0.1,
+                                        test = 0.1))
+htrain <- as_tibble(hsplit$train)
+hvalid <- as_tibble(hsplit$valid)
+htest <- as_tibble(hsplit$test)
+
+model <- lm(LE ~ co2emit+ comwaste, data = htrain)
+
+step(model, direction = "both")
+
+#rmse(model, htrain)
+
+htrain <- htrain %>%add_residuals(model, "lresid") 
+
+htrain %>%
+add_residuals(model, "lresid") %>% ggplot(aes(sample=lresid)) + geom_qq()
+
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= co2emit)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= comwaste)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+```
+
+
+```{r fin_economy}
+fin_eco_plotting <- subset(final_economy, select = c(2:10))
+M <- cor(fin_eco_plotting, use = "complete.obs")
+corrplot(M, method = "circle")
+
+
+final_df <- subset(fin_eco_plotting, select = c(1,2,7))
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        valid = 0.1,
+                                        test = 0.1))
+htrain <- as_tibble(hsplit$train)
+hvalid <- as_tibble(hsplit$valid)
+htest <- as_tibble(hsplit$test)
+
+model <- lm(LE ~ income+ foodDef, data = htrain)
+
+step(model, direction = "both")
+
+#rmse(model, htrain)
+
+htrain <- htrain %>%add_residuals(model, "lresid") 
+
+htrain %>%
+add_residuals(model, "lresid") %>% ggplot(aes(sample=lresid)) + geom_qq()
+
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= income)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+
+htest %>%
+add_predictions(model, "lpred")%>%
+ggplot(aes(x= foodDef)) +
+geom_point(aes(y= LE)) + geom_line(aes(y=lpred), col = "red")
+
+
+res <- residuals(model)
+res <- as.data.frame(res)
+
+ggplot(res,aes(res))+geom_histogram()
+```
+
+```{r init_model_edu}
+fin_edu
+test <- fin_edu%>%group_by(`country`)%>%filter(`country`=='India')
+```
+
+```{r new_data}
+library(lubridate)
+new_data <- test[,1:3]
+new <- new_data[,-2]
+new <- new[1:57,]
+new$year <- as.Date(new$year, format = "%Y")
+new$year <- year(new$year)
+new
+```
+
+
+
+
+
+
+```{r plot_model}
+
+
+train = new[1:45,]
+actual <- filter(train,year>"2004-03-24")
+valid = new[45:nrow(new),]
+
+
+ARIMAfit1 <- auto.arima(train$LE, approximation=T, trace=TRUE,ic="aic", allowdrift=T)
+
+summary(ARIMAfit1)
+
+predicted_values <- predict(ARIMAfit1,train$LE)
+
+
+forecastnew <- forecast(ARIMAfit1)
+
+
+forecast1 <- forecast(ARIMAfit1, h = 22)
+forecast1$mean
+plot(forecast1)
+typeof(forecast1)
+predicted <- predict(forecast1)
+Box.test(forecast1$residuals,lag=5,type = "Ljung-Box") 
+
+
+dates <- seq(as.Date("2004-03-24"), as.Date("2025-12-31"), by=365)
+
+check <-tibble(year=dates,`Life expectancy at birth, total (years)`=predicted$mean)
+
+check$year <- year(check$year)
+
+
+
+
+
+ggplot() + 
+  geom_line(data=check, aes(x=check$`Life expectancy at birth, total (years)`, y = year, color='Predicted')) +
+   geom_line(data=new, aes(x= `LE`, y=year, color='Actual'))+ scale_x_continuous(labels = scales::comma) +xlab("Life Expectancy")
+
+names(check) <- c("year","Predicted Life expectancy at birth, total (years)")
+check1 <- filter(check,year<"2016-03-24")
+check1$`Life expectancy at birth, total (years)` <- valid$`LE`
+
+x <- check1$`Life expectancy at birth, total (years)`
+y <- check1$`Predicted Life expectancy at birth, total (years)`
+RMSE(x,y)
+
+check1 <- mutate(check1, "% Accuracy" = 1- abs(check1$`Life expectancy at birth, total (years)` - check1$`Predicted Life expectancy at birth, total (years)`)/check1$`Life expectancy at birth, total (years)`)
+
+mean(check1$`% Accuracy`)
+res <- residuals(ARIMAfit1)
+res <- as.data.frame(res)
+ggplot(res,aes(x))+geom_histogram(col="black",fill="blue")+xlab("Residuals")
+```
+
+```{r neural_net access}
+final_df <- subset(fin_access, select = c(2,3,5,6,7,8))
+
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        test = 0.1))
+
+htrain <- as_tibble(hsplit$train)
+htest <- as_tibble(hsplit$test)
+
+
+x_train <- subset(htrain,select = c(-4))
+y_train <- subset(htrain,select = c(4))
+x_test <- subset(htest,select = c(-4))
+y_test <- subset(htest,select = c(4))
+
+x_train <- scale(x_train) 
+# Use means and standard deviations from training set to normalize test set
+col_means_train <- attr(x_train, "scaled:center") 
+col_stddevs_train <- attr(x_train, "scaled:scale")
+x_test <- scale(x_test, center = col_means_train, scale = col_stddevs_train)
+
+
+# Test data is *not* used when calculating the mean and std.
+
+# Normalize training data
+# First training sample, normalized
+
+neural_model = keras_model_sequential() %>%   
+  layer_dense(units = 64, activation = "relu", input_shape = ncol(x_train)) %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = ncol(y_train))
+
+
+compile(neural_model,loss = "mse", optimizer = optimizer_rmsprop(), metrics = c("mae","accuracy"))
+
+
+print_dot_callback <- callback_lambda(
+  on_epoch_end = function(epoch, logs) {
+    if (epoch %% 80 == 0) cat("\n")
+    cat(".")
+  }
+)    
+
+epochs <- 260
+
+# Fit the model and store training stats
+
+early_stop <- callback_early_stopping(monitor = "val_loss", patience = 20)
+
+history1 <- neural_model %>% fit(
+  as.matrix(x_train), 
+     as.matrix(y_train),
+  epochs = epochs,
+  validation_split = 0.2,
+  verbose = 0,
+  callbacks = list(early_stop, print_dot_callback)
+)
+
+plot(history1, metrics = "mean_absolute_error", smooth = FALSE) +
+  coord_cartesian(xlim = c(0, 270), ylim = c(0, 100))
+
+#c(loss, mae) %<-% (model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+checking %<-% (neural_model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+
+
+paste0("Mean absolute error on test set:  ", checking$mean_absolute_error)
+
+
+#paste0("Mean absolute error on test set: $", sprintf("%.2f", mae * 1000))
+
+test_predictions <- neural_model %>% predict(as.matrix(x_test))
+
+x <- as_tibble(test_predictions)
+colnames(x) <- c("Predicted Values")
+
+new_table <- tibble("Predicted" = x$`Predicted Values`, "Actual"= y_test$LE)
+new_table
+new_table<- mutate(new_table, "% Accuracy" = 1- abs(new_table$Actual - new_table$Predicted)/new_table$Actual)
+mean(new_table$`% Accuracy`)
+
+neural_model_access <- neural_model 
+
+```
+
+```{r neural_net edu}
+final_df <- subset(fin_edu, select = c(2,3,5,6,7,8))
+
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        test = 0.1))
+
+htrain <- as_tibble(hsplit$train)
+htest <- as_tibble(hsplit$test)
+
+
+x_train <- subset(htrain,select = c(-2))
+y_train <- subset(htrain,select = c(2))
+x_test <- subset(htest,select = c(-2))
+y_test <- subset(htest,select = c(2))
+
+x_train <- scale(x_train) 
+# Use means and standard deviations from training set to normalize test set
+col_means_train <- attr(x_train, "scaled:center") 
+col_stddevs_train <- attr(x_train, "scaled:scale")
+x_test <- scale(x_test, center = col_means_train, scale = col_stddevs_train)
+
+
+# Test data is *not* used when calculating the mean and std.
+
+# Normalize training data
+# First training sample, normalized
+
+neural_model = keras_model_sequential() %>%   
+  layer_dense(units = 64, activation = "relu", input_shape = ncol(x_train)) %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = ncol(y_train))
+
+
+compile(neural_model,loss = "mse", optimizer = optimizer_rmsprop(), metrics = c("mae","accuracy"))
+
+
+print_dot_callback <- callback_lambda(
+  on_epoch_end = function(epoch, logs) {
+    if (epoch %% 80 == 0) cat("\n")
+    cat(".")
+  }
+)    
+
+epochs <- 260
+
+# Fit the model and store training stats
+
+early_stop <- callback_early_stopping(monitor = "val_loss", patience = 20)
+
+history1 <- neural_model %>% fit(
+  as.matrix(x_train), 
+     as.matrix(y_train),
+  epochs = epochs,
+  validation_split = 0.2,
+  verbose = 0,
+  callbacks = list(early_stop, print_dot_callback)
+)
+
+plot(history1, metrics = "mean_absolute_error", smooth = FALSE) +
+  coord_cartesian(xlim = c(0, 270), ylim = c(0, 100))
+
+#c(loss, mae) %<-% (model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+checking %<-% (neural_model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+
+
+paste0("Mean absolute error on test set:  ", checking$mean_absolute_error)
+
+
+#paste0("Mean absolute error on test set: $", sprintf("%.2f", mae * 1000))
+
+test_predictions <- neural_model %>% predict(as.matrix(x_test))
+
+x <- as_tibble(test_predictions)
+colnames(x) <- c("Predicted Values")
+
+new_table <- tibble("Predicted" = x$`Predicted Values`, "Actual"= y_test$LE)
+new_table
+new_table<- mutate(new_table, "% Accuracy" = 1- abs(new_table$Actual - new_table$Predicted)/new_table$Actual)
+mean(new_table$`% Accuracy`)
+
+neural_model_edu <- neural_model 
+```
+
+```{r neural_net health}
+final_df <- subset(fin_health, select = c(2:13,15))
+
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        test = 0.1))
+
+htrain <- as_tibble(hsplit$train)
+htest <- as_tibble(hsplit$test)
+
+
+x_train <- subset(htrain,select = c(-13))
+y_train <- subset(htrain,select = c(13))
+x_test <- subset(htest,select = c(-13))
+y_test <- subset(htest,select = c(13))
+
+x_train <- scale(x_train) 
+# Use means and standard deviations from training set to normalize test set
+col_means_train <- attr(x_train, "scaled:center") 
+col_stddevs_train <- attr(x_train, "scaled:scale")
+x_test <- scale(x_test, center = col_means_train, scale = col_stddevs_train)
+
+
+# Test data is *not* used when calculating the mean and std.
+
+# Normalize training data
+# First training sample, normalized
+
+neural_model = keras_model_sequential() %>%   
+  layer_dense(units = 64, activation = "relu", input_shape = ncol(x_train)) %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = ncol(y_train))
+
+
+compile(neural_model,loss = "mse", optimizer = optimizer_rmsprop(), metrics = c("mae","accuracy"))
+
+
+print_dot_callback <- callback_lambda(
+  on_epoch_end = function(epoch, logs) {
+    if (epoch %% 80 == 0) cat("\n")
+    cat(".")
+  }
+)    
+
+epochs <- 260
+
+# Fit the model and store training stats
+
+early_stop <- callback_early_stopping(monitor = "val_loss", patience = 20)
+
+history1 <- neural_model %>% fit(
+  as.matrix(x_train), 
+     as.matrix(y_train),
+  epochs = epochs,
+  validation_split = 0.2,
+  verbose = 0,
+  callbacks = list(early_stop, print_dot_callback)
+)
+
+plot(history1, metrics = "mean_absolute_error", smooth = FALSE) +
+  coord_cartesian(xlim = c(0, 270), ylim = c(0, 100))
+
+#c(loss, mae) %<-% (model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+checking %<-% (neural_model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+
+
+paste0("Mean absolute error on test set:  ", checking$mean_absolute_error)
+
+
+#paste0("Mean absolute error on test set: $", sprintf("%.2f", mae * 1000))
+
+test_predictions <- neural_model %>% predict(as.matrix(x_test))
+
+x <- as_tibble(test_predictions)
+colnames(x) <- c("Predicted Values")
+
+new_table <- tibble("Predicted" = x$`Predicted Values`, "Actual"= y_test$LE)
+new_table
+new_table<- mutate(new_table, "% Accuracy" = 1- abs(new_table$Actual - new_table$Predicted)/new_table$Actual)
+mean(new_table$`% Accuracy`)
+
+neural_model_health <- neural_model
+```
+
+```{r neural_net env}
+
+final_df <- subset(final_environment, select = c(2:7))
+
+final_df <- drop_na(final_df)
+final_df
+set.seed(1)
+hsplit <- resample_partition(final_df, c(train = 0.8,
+                                        test = 0.1))
+
+htrain <- as_tibble(hsplit$train)
+htest <- as_tibble(hsplit$test)
+
+
+x_train <- subset(htrain,select = c(-6))
+y_train <- subset(htrain,select = c(6))
+x_test <- subset(htest,select = c(-6))
+y_test <- subset(htest,select = c(6))
+
+to_predict <- matrix(c(1.84900669,	2.784810e+01,	100, 75.397463,7.632664e+03), nrow = 1)
+
+x_train <- scale(x_train) 
+# Use means and standard deviations from training set to normalize test set
+col_means_train <- attr(x_train, "scaled:center") 
+col_stddevs_train <- attr(x_train, "scaled:scale")
+x_test <- scale(x_test, center = col_means_train, scale = col_stddevs_train)
+
+to_predict <- scale(to_predict, center = col_means_train, scale = col_stddevs_train)
+
+# Test data is *not* used when calculating the mean and std.
+
+# Normalize training data
+# First training sample, normalized
+
+neural_model = keras_model_sequential() %>%   
+  layer_dense(units = 64, activation = "relu", input_shape = ncol(x_train)) %>%
+  layer_dense(units = 64, activation = "relu") %>%
+  layer_dense(units = ncol(y_train))
+
+
+compile(neural_model,loss = "mse", optimizer = optimizer_rmsprop(), metrics = c("mae","accuracy"))
+
+
+print_dot_callback <- callback_lambda(
+  on_epoch_end = function(epoch, logs) {
+    if (epoch %% 80 == 0) cat("\n")
+    cat(".")
+  }
+)    
+
+epochs <- 260
+
+# Fit the model and store training stats
+
+early_stop <- callback_early_stopping(monitor = "val_loss", patience = 20)
+
+history1 <- neural_model %>% fit(
+  as.matrix(x_train), 
+     as.matrix(y_train),
+  epochs = epochs,
+  validation_split = 0.2,
+  verbose = 0,
+  callbacks = list(early_stop, print_dot_callback)
+)
+
+plot(history1, metrics = "mean_absolute_error", smooth = FALSE) +
+  coord_cartesian(xlim = c(0, 100), ylim = c(0, 100))
+
+#c(loss, mae) %<-% (model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+checking %<-% (neural_model %>% evaluate(as.matrix(x_test), as.matrix(y_test), verbose = 0))
+
+
+paste0("Mean absolute error on test set:  ", checking$mean_absolute_error)
+
+
+#paste0("Mean absolute error on test set: $", sprintf("%.2f", mae * 1000))
+
+test_predictions <- neural_model %>% predict(as.matrix(x_test))
+
+x <- as_tibble(test_predictions)
+colnames(x) <- c("Predicted Values")
+
+new_table <- tibble("Predicted" = x$`Predicted Values`, "Actual"= y_test$LE)
+new_table
+new_table<- mutate(new_table, "% Accuracy" = 1- abs(new_table$Actual - new_table$Predicted)/new_table$Actual)
+mean(new_table$`% Accuracy`)
+
+
+new_test <- neural_model %>% predict(to_predict)
+x_test
+
+neural_model_env <- neural_model
+```
+
+```{r neural_net function}
+
+# Insert values for -> co2 emisions,co2 fuel consumptions,Combustible renewables and waste, fossil fuel consumption , greenhouse gas emmissions
+
+to_predict <- matrix(c(1.84900669,	27.84810,	10, 75.397463,7632.098), nrow = 1)
+
+neural_function <- function(predict){
+                                      to_predict <- scale(predict, center = col_means_train, scale = col_stddevs_train)
+                                      new_test <- neural_model_env %>% predict(to_predict)
+                                      return(new_test)
+                                      }
+
+neural_function(to_predict)
+```
+
+
+
