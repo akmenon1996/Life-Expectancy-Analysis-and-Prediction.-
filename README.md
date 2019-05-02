@@ -26,3 +26,10 @@ in parameters as well as Life Expectancy across the years.
 We have two seperate code sets for our modelling and exploratory analysis. 
 
 ## Our project report is added as well as a PDF.
+
+
+## Contributors
+1) Abhijit Krishna Menon
+2) Eda Aydin Oktay
+3) Mansi Nagraj
+4) Manya Raman
