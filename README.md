@@ -29,7 +29,7 @@ We have two seperate code sets for our modelling and exploratory analysis.
 
 
 ## Contributors
-1) Abhijit Krishna Menon
-2) Eda Aydin Oktay
-3) Mansi Nagraj
-4) Manya Raman
+1) Abhijit Krishna Menon, Northeastern University 
+2) Eda Aydin Oktay, Northeastern University
+3) Mansi Nagraj, Northeastern University
+4) Manya Raman, Northeastern University
